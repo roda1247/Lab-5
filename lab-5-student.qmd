@@ -78,6 +78,7 @@ sure it looks nice.
     -   If all else fails, you can set your execution options to `error: true`,
     which will allow the file to render even if errors are present.
 
+
 # Part 3: Let's Start Working with the Data!
 
 ## The Data
@@ -144,7 +145,8 @@ included in the `teacher_evals_codebook.pdf`.
 ```{r}
 #| label: setup
 # code chunk for loading packages
-
+library(tidyverse)
+library(dplyr)
 ```
 
 **2. Load in the `teacher_evals` data.** 
@@ -152,7 +154,7 @@ included in the `teacher_evals_codebook.pdf`.
 ```{r}
 #| label: load-data
 # code chunk for importing the data
-
+eval <- read_csv("data-raw/teacher_evals.csv")
 ```
 
 ### Data Inspection + Summary
@@ -162,16 +164,21 @@ included in the `teacher_evals_codebook.pdf`.
 ```{r}
 #| label: explore-data
 # you may want to use code to answer this question
-
+#glimpse(eval)
+summary(eval)
 ```
+>The data set contains 8,015 rows and 22 columns/ variables. All but five variables are read as doubles, while the remaining are read in as characters. We have information that range from the teacher's characteristics, the course characteristics, the students feedback, and their course grades.  
+
 
 **4. What is the unit of observation (i.e. a single row in the dataset) identified by?**
 
 ```{r}
 #| label: row-identification
 # you may want to use code to answer this question
-
+#head(eval)
 ```
+
+> The unit of observation are the answers to the questions per course and teacher.  
 
 **5. Use _one_ `dplyr` pipeline to clean the data by:**
 
@@ -185,7 +192,15 @@ included in the `teacher_evals_codebook.pdf`.
 ```{r}
 #| label: data-cleaning
 # code chunk for Q4
-
+teacher_evals_clean <- eval |> 
+  rename(sex=gender) |> 
+  filter(no_participants >= 10) |> 
+  mutate(teacher_id = as.character(teacher_id)) |> 
+  select(`course_id`, `teacher_id`, `question_no`, `no_participants`, 
+  `resp_share`, `SET_score_avg`, `percent_failed_cur`, `academic_degree`, 
+  `seniority`, `sex`)
+  
+write.csv(teacher_evals_clean, file="data-clean/teacher_evals_clean.csv", row.names=FALSE)
 ```
 
 **6. How many unique instructors and unique courses are present in the cleaned dataset?**
@@ -193,7 +208,8 @@ included in the `teacher_evals_codebook.pdf`.
 ```{r}
 #| label: unique-courses
 # code chunk for Q5
-
+teacher_evals_clean |> 
+  distinct(course_id, teacher_id)
 ```
 
 **7. One teacher-course combination has some missing values, coded as `NA`. Which instructor has these missing values? Which course? What variable are the missing values in?**
@@ -201,16 +217,22 @@ included in the `teacher_evals_codebook.pdf`.
 ```{r}
 #| label: uncovering-missing-values
 # code chunk for Q6
-
+teacher_evals_clean |> 
+  filter(if_any(.fns = is.na))
 ```
+> The teacher-course combination with missing values is teacher id, 56347 ,and course id, PAB3SE004PA. The variable with the missing values is the percent_failed_cur.   
 
 **8. What are the demographics of the instructors in this study? Investigate the variables `academic_degree`, `seniority`, and `sex` and summarize your findings in ~3 complete sentences.**
 
 ```{r}
 #| label: exploring-demographics-of-instructors
 # code chunk for Q7
+teacher_evals_clean |> 
+  distinct(academic_degree, seniority, sex) 
+ 
 
 ```
+> There are 54 unique cases; 22 dr degrees, 19 masters, 6 no_degrees, and 7 prof degrees. 
 
 **9. Each course seems to have used a different subset of the nine evaluation questions. How many teacher-course combinations asked all nine questions?**
 
