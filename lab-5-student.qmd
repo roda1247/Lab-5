@@ -175,7 +175,7 @@ summary(eval)
 ```{r}
 #| label: row-identification
 # you may want to use code to answer this question
-#head(eval)
+head(eval)
 ```
 
 > The unit of observation are the answers to the questions per course and teacher.  
@@ -195,10 +195,16 @@ summary(eval)
 teacher_evals_clean <- eval |> 
   rename(sex=gender) |> 
   filter(no_participants >= 10) |> 
-  mutate(teacher_id = as.character(teacher_id)) |> 
-  select(`course_id`, `teacher_id`, `question_no`, `no_participants`, 
-  `resp_share`, `SET_score_avg`, `percent_failed_cur`, `academic_degree`, 
-  `seniority`, `sex`)
+  mutate(
+    teacher_id = as.numeric(teacher_id), 
+    course_id = as.character(course_id),
+    question_no = as.numeric(question_no),
+    academic_degree = as.factor(academic_degree),
+    seniority = as.factor(seniority),
+    sex = as.character(sex)) |> 
+  select(course_id, teacher_id, question_no, no_participants, 
+  resp_share, SET_score_avg, percent_failed_cur, academic_degree, 
+  seniority, sex)
   
 write.csv(teacher_evals_clean, file="data-clean/teacher_evals_clean.csv", row.names=FALSE)
 ```
@@ -209,16 +215,33 @@ write.csv(teacher_evals_clean, file="data-clean/teacher_evals_clean.csv", row.na
 #| label: unique-courses
 # code chunk for Q5
 teacher_evals_clean |> 
-  distinct(course_id, teacher_id)
+  summarise(n_distinct(teacher_id))
+
+teacher_evals_clean |> 
+  summarise(n_distinct(course_id))
 ```
+> There are 297 unique instructors and 939 unique courses.  
+
 
 **7. One teacher-course combination has some missing values, coded as `NA`. Which instructor has these missing values? Which course? What variable are the missing values in?**
 
 ```{r}
 #| label: uncovering-missing-values
 # code chunk for Q6
-teacher_evals_clean |> 
-  filter(if_any(.fns = is.na))
+
+missing_info <- teacher_evals_clean |> 
+  mutate(row_id = row_number()) |>
+  select(where(is.numeric), teacher_id, course_id, row_id) |>
+  pivot_longer(cols = -c(row_id, teacher_id, course_id),
+               names_to = "variable",
+               values_to = "value") |> 
+  filter(is.na(value)) |> 
+  select(teacher_id, 
+         course_id,
+         variable) |> 
+  distinct()
+
+missing_info
 ```
 > The teacher-course combination with missing values is teacher id, 56347 ,and course id, PAB3SE004PA. The variable with the missing values is the percent_failed_cur.   
 
@@ -227,20 +250,41 @@ teacher_evals_clean |>
 ```{r}
 #| label: exploring-demographics-of-instructors
 # code chunk for Q7
-teacher_evals_clean |> 
-  distinct(academic_degree, seniority, sex) 
- 
 
+instructor_demographics <- teacher_evals_clean |>
+  select(academic_degree, seniority, sex) |>
+  distinct() |>
+  summarise(
+    total_instructors = n(),
+    degree = list(table(academic_degree)),
+    seniority = list(table(seniority)),
+    sex = list(table(sex)))
+
+
+instructor_demographics$degree
+instructor_demographics$seniority
+instructor_demographics$sex
 ```
-> There are 54 unique cases; 22 dr degrees, 19 masters, 6 no_degrees, and 7 prof degrees. 
+> For academic degrees, there are 22 doctorates, 19 masters, 6 n/a, and 7 professors degrees. For seniority, there is ranging between 1-11 years, with majority around 4 and 5 years of teaching at the school. As for sex, there are 23 females and 31 male teachers.  
 
 **9. Each course seems to have used a different subset of the nine evaluation questions. How many teacher-course combinations asked all nine questions?**
 
 ```{r}
 #| label: teacher-course-asked-every-question
 # code chunk for Q8
+teacher_evals_clean |> 
+  select(resp_share = 1) 
 
+tcaeq <- teacher_evals_clean |>
+  group_by(teacher_id, course_id) |> 
+  summarise(n_questions = n_distinct(question_no), .groups = "drop") |> 
+  filter(n_questions == 9)|>
+  count(n_questions) 
+
+tcaeq
 ```
+> 49 teacher-course combinations asked all nine questions
+
 
 ## Rate my Professor
 
@@ -249,16 +293,46 @@ teacher_evals_clean |>
 ```{r}
 #| label: question-1-high-low
 # code chunk for Q9
+summary(teacher_evals_clean$question_no)
 
+q1_ratings <- teacher_evals_clean |> 
+  filter(question_no == 901) |> 
+  group_by(teacher_id) |> 
+  summarise(avg_q1 = mean(SET_score_avg, na.rm = TRUE), .groups = "drop")
+
+
+highest_avg <- q1_ratings |> 
+  filter(avg_q1 == max(avg_q1))
+
+lowest_avg  <- q1_ratings |> 
+  filter(avg_q1 == min(avg_q1))
+
+highest_avg
+lowest_avg
 ```
+>The instructor with the highest rating is teacher_id 54201, and the lowest rating is teacher_id 100132. 
 
 **11. Which instructors with one year of experience had the highest and lowest average percentage of students failing in the current semester across all their courses?**
 
 ```{r}
 #| label: one-year-experience-failing-students
 # code chunk for Q10
+fail_rate_by_new_teacher <- teacher_evals_clean |> 
+  filter(seniority == 1) |> 
+  group_by(teacher_id) |> 
+  summarise(avg_percent_failed = mean(percent_failed_cur, na.rm = TRUE), .groups = "drop")
 
+#Get teachers with highest and lowest average failure rates
+highest_fail_rate <- fail_rate_by_new_teacher |> 
+  filter(avg_percent_failed == max(avg_percent_failed, na.rm = TRUE))
+
+lowest_fail_rate <- fail_rate_by_new_teacher |> 
+  filter(avg_percent_failed == min(avg_percent_failed, na.rm = TRUE))
+
+highest_fail_rate
+lowest_fail_rate
 ```
+> The instructor with the highest fail rate with one year of experience is the teacher_id 106692. The instructor with the lowest are teacher_id's 86222, 98650, 98651, 102379, 103092, 106126. 
 
 **12. Which female instructors with either a doctorate or professional degree had the highest and lowest average percent of students responding to the evaluation across all their courses?**
 
@@ -266,4 +340,23 @@ teacher_evals_clean |>
 #| label: female-instructor-student-response
 # code chunk for Q11
 
+female_doctorate_pro <- teacher_evals_clean |> 
+  filter(sex == "female",
+    academic_degree %in% c("dr", "prof")) |> 
+  group_by(teacher_id) |> 
+  summarise(avg_resp_share = mean(resp_share, na.rm = TRUE), .groups = "drop")
+
+highest_resp <- female_doctorate_pro  |> 
+  filter(avg_resp_share == max(avg_resp_share, na.rm = TRUE))
+
+lowest_resp <- female_doctorate_pro |> 
+  filter(avg_resp_share == min(avg_resp_share, na.rm = TRUE))
+
+highest_resp
+lowest_resp
 ```
+
+> The highest average response is teacher_id 101508. The lowest response is 59338.  
+
+
+
